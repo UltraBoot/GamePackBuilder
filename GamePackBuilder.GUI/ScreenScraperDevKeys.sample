@@ -1,0 +1,20 @@
+﻿// ============================================================
+// ШАБЛОН. Этот файл лежит в публичном репозитории.
+//
+// Скопируйте его как ScreenScraperDevKeys.cs (без .sample)
+// и впишите свои ключи разработчика ScreenScraper.
+// Скопированный файл автоматически попадёт в .gitignore
+// и не будет опубликован.
+//
+// Где получить ключи: https://www.screenscraper.fr/forumsujet.php?frub=12
+// ============================================================
+
+namespace GamePackBuilder.GUI
+{
+    internal static class ScreenScraperDevKeys
+    {
+        public const string DevId = "xxxxxxxx";
+        public const string DevPassword = "xxxxxxxx";
+        public const string SoftName = "GamePackBuilder";
+    }
+}

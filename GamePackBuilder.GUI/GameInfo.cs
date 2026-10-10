@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace GamePackBuilder.GUI
 {
@@ -20,7 +21,14 @@ namespace GamePackBuilder.GUI
 
         /// <summary>Пути к локальным скриншотам.</summary>
         public List<string> Screenshots { get; set; } = new();
+        /// <summary>
+        /// Имена полей, которые были заполнены автоматически с ScreenScraper.
+        /// При повторном скрапинге эти поля обновляются, а правки пользователя — нет.
+        /// Пустой список означает, что все данные введены вручную.
+        /// </summary>
+        public List<string> ScraperFields { get; set; } = new();
 
+        [JsonIgnore]
         public bool IsEmpty =>
             string.IsNullOrWhiteSpace(Title) &&
             string.IsNullOrWhiteSpace(Year) &&

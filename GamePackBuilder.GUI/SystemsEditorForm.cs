@@ -95,6 +95,23 @@ namespace GamePackBuilder.GUI
                 FillWeight = 22
             });
 
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "ScreenScraperId",
+                HeaderText = "ScreenScraper ID",
+                FillWeight = 10
+            });
+            _grid.Columns["ScreenScraperId"].HeaderCell.ToolTipText =
+                "Числовой ID системы в базе ScreenScraper.\n\n" +
+                "Примеры:\n" +
+                "  Mega Drive = 1\n" +
+                "  NES = 3\n" +
+                "  SNES = 4\n" +
+                "  PlayStation 1 = 12\n" +
+                "  Dreamcast = 23\n\n" +
+                "Список всех ID: https://www.screenscraper.fr/api2/systemesListe.php?devid=...&output=json\n\n" +
+                "Оставь пустым (или 0), если скрапинг для этой системы не нужен.";
+
             // Отдельно создаём колонку «Игры — папки», чтобы задать подсказку заголовку
             var folderCol = new DataGridViewCheckBoxColumn
             {
@@ -171,6 +188,12 @@ namespace GamePackBuilder.GUI
 
             GameSystems.Reload();
 
+            // Сброс подсказки на всякий случай.
+            _lblHint.ForeColor = Color.DimGray;
+            _lblHint.Text =
+                "Двойной клик по ячейке — редактирование. Расширения указывай через запятую: .zip, .nes, .unf\r\n" +
+                "Галочка «Игры — папки» — для систем, где одна игра это целая папка (Dreamcast, Saturn, Master System).";
+
             const string folderTooltip =
                 "Отметь галочкой, если одна игра — это целая папка с несколькими файлами внутри.\r\n\r\n" +
                 "Примеры:\r\n" +
@@ -179,18 +202,57 @@ namespace GamePackBuilder.GUI
                 "✓ Sega Master System — папка с .sms внутри\r\n\r\n" +
                 "Для NES, SNES, GBA, PS1 и других — оставь пустым.";
 
+            int enriched = 0;
+
             foreach (var s in GameSystems.All)
             {
+                int ssId = s.ScreenScraperSystemId;
+                string extensions = string.Join(", ", s.PrimaryExtensions);
+                string displayName = s.DisplayName;
+                string targetFolder = s.TargetFolder;
+
+                // Если чего-то не хватает — попробуем подставить из встроенной базы.
+                if (ssId == 0 || string.IsNullOrWhiteSpace(extensions))
+                {
+                    var baseEntry = SystemsBase.FindByFolder(s.SourceFolder);
+                    if (baseEntry != null)
+                    {
+                        bool changed = false;
+
+                        if (ssId == 0 && baseEntry.ScreenScraperId > 0)
+                        {
+                            ssId = baseEntry.ScreenScraperId;
+                            changed = true;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(extensions) && baseEntry.PrimaryExtensions.Count > 0)
+                        {
+                            extensions = string.Join(", ", baseEntry.PrimaryExtensions);
+                            changed = true;
+                        }
+
+                        if (changed) enriched++;
+                    }
+                }
+
                 int idx = _grid.Rows.Add(
                     s.Id,
-                    s.DisplayName,
+                    displayName,
                     s.SourceFolder,
-                    s.TargetFolder,
-                    string.Join(", ", s.PrimaryExtensions),
+                    targetFolder,
+                    extensions,
+                    ssId == 0 ? "" : ssId.ToString(),
                     s.GamesAreFolders);
 
-                // Привязываем подсказку к ячейке галочки
                 _grid.Rows[idx].Cells["GamesAreFolders"].ToolTipText = folderTooltip;
+            }
+
+            if (enriched > 0)
+            {
+                _lblHint.ForeColor = Color.DodgerBlue;
+                _lblHint.Text =
+                    $"Из встроенной базы подставлены ID ScreenScraper и/или расширения для {enriched} систем.\r\n" +
+                    "Проверьте значения и нажмите «Сохранить».";
             }
         }
 
@@ -210,7 +272,10 @@ namespace GamePackBuilder.GUI
                 string sourceFolder = (row.Cells["SourceFolder"].Value?.ToString() ?? "").Trim();
                 string targetFolder = (row.Cells["TargetFolder"].Value?.ToString() ?? "").Trim();
                 string extStr = (row.Cells["Extensions"].Value?.ToString() ?? "").Trim();
+                string ssIdStr = (row.Cells["ScreenScraperId"].Value?.ToString() ?? "").Trim();
                 bool isFolder = row.Cells["GamesAreFolders"].Value is bool b && b;
+
+                int.TryParse(ssIdStr, out int ssId);
 
                 // Пропускаем полностью пустые строки
                 if (string.IsNullOrWhiteSpace(id) &&
@@ -253,7 +318,8 @@ namespace GamePackBuilder.GUI
                     SourceFolder = sourceFolder,
                     TargetFolder = string.IsNullOrWhiteSpace(targetFolder) ? id : targetFolder,
                     PrimaryExtensions = extensions,
-                    GamesAreFolders = isFolder
+                    GamesAreFolders = isFolder,
+                    ScreenScraperSystemId = ssId
                 });
             }
 
@@ -283,7 +349,8 @@ namespace GamePackBuilder.GUI
                     lines.Add($"      \"sourceFolder\": \"{Escape(s.SourceFolder)}\",");
                     lines.Add($"      \"targetFolder\": \"{Escape(s.TargetFolder)}\",");
                     lines.Add($"      \"primaryExtensions\": [{extList}],");
-                    lines.Add($"      \"gamesAreFolders\": {(s.GamesAreFolders ? "true" : "false")}");
+                    lines.Add($"      \"gamesAreFolders\": {(s.GamesAreFolders ? "true" : "false")},");
+                    lines.Add($"      \"screenScraperSystemId\": {s.ScreenScraperSystemId}");
                     lines.Add("    }" + comma);
                 }
 
@@ -313,7 +380,7 @@ namespace GamePackBuilder.GUI
         // ============================================================
         private void AddRow()
         {
-            int idx = _grid.Rows.Add("", "", "", "", "", false);
+            int idx = _grid.Rows.Add("", "", "", "", "", "", false);
             _grid.CurrentCell = _grid.Rows[idx].Cells["Id"];
             _grid.BeginEdit(true);
         }

@@ -31,7 +31,7 @@ namespace GamePackBuilder.GUI
                 ForeColor = Color.Gray
             };
 
-            _txtTitle = new TextBox
+            _txtTitle = new NoFocusTextBox
             {
                 Dock = DockStyle.Fill,
                 Font = new Font("Segoe UI", 15F, FontStyle.Bold),
@@ -253,7 +253,7 @@ namespace GamePackBuilder.GUI
             ForeColor = Color.Gray
         };
 
-        private static TextBox MakeField(bool multiline = false) => new TextBox
+        private static NoFocusTextBox MakeField(bool multiline = false) => new NoFocusTextBox
         {
             Dock = DockStyle.Fill,
             Multiline = multiline,
@@ -261,7 +261,6 @@ namespace GamePackBuilder.GUI
             AcceptsReturn = multiline,
             WordWrap = multiline,
             BorderStyle = BorderStyle.None,
-            BackColor = Color.White,
             ReadOnly = true
         };
 
@@ -280,14 +279,12 @@ namespace GamePackBuilder.GUI
             // Заголовок
             _txtTitle.ReadOnly = !editing;
             _txtTitle.BorderStyle = editing ? BorderStyle.FixedSingle : BorderStyle.None;
-            _txtTitle.BackColor = editing ? Color.White : Color.FromArgb(245, 245, 245);
 
             // Поля
             foreach (var tb in new[] { _txtYear, _txtDeveloper, _txtGenre, _txtPlayers, _txtDescription })
             {
                 tb.ReadOnly = !editing;
                 tb.BorderStyle = editing ? BorderStyle.FixedSingle : BorderStyle.None;
-                tb.BackColor = Color.White;
             }
 
             // Кнопки картинок
@@ -313,6 +310,10 @@ namespace GamePackBuilder.GUI
                 _lblFilePath.Text = "Файл: " + _filePath;
                 _lblFilePath.ForeColor = Color.Gray;
             }
+
+            // Применяем тему после всех изменений,
+            // чтобы цвета полей соответствовали текущей теме.
+            ThemeManager.Apply(this);
         }
     }
 }

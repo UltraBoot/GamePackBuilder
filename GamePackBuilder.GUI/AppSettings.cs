@@ -1,11 +1,13 @@
 ﻿using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GamePackBuilder.GUI
 {
     /// <summary>
-    /// Настройки приложения. Сохраняются в %LOCALAPPDATA%\GamePackBuilder\config.json
+    /// Настройки приложения. Сохраняются в Data\config.json (портативно)
+    /// или в %LOCALAPPDATA%\GamePackBuilder\config.json (если рядом с exe нет прав на запись).
     /// </summary>
     public class AppSettings
     {
@@ -18,11 +20,25 @@ namespace GamePackBuilder.GUI
         /// <summary>Тема приложения: "light" или "dark".</summary>
         public string Theme { get; set; } = "light";
 
+        /// <summary>Логин пользователя на screenscraper.fr (ssid).</summary>
+        public string ScreenScraperUser { get; set; } = "";
+
+        /// <summary>
+        /// Зашифрованный пароль пользователя. Именно это поле лежит в config.json.
+        /// Расшифровывается в ScreenScraperPassword при загрузке.
+        /// </summary>
+        public string ScreenScraperPasswordEncrypted { get; set; } = "";
+
+        /// <summary>
+        /// Пароль пользователя в открытом виде — только в памяти.
+        /// НЕ сериализуется в JSON.
+        /// </summary>
+        [JsonIgnore]
+        public string ScreenScraperPassword { get; set; } = "";
+
         // ---------- Внутреннее ----------
 
-        private static string ConfigDir =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "GamePackBuilder");
+        private static string ConfigDir => AppPaths.DataDir;
 
         private static string ConfigFile =>
             Path.Combine(ConfigDir, "config.json");
@@ -41,7 +57,12 @@ namespace GamePackBuilder.GUI
                     return new AppSettings();
 
                 string json = File.ReadAllText(ConfigFile);
-                return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+
+                // Расшифровываем пароль в память.
+                settings.ScreenScraperPassword = SecretProtector.Unprotect(settings.ScreenScraperPasswordEncrypted);
+
+                return settings;
             }
             catch
             {
@@ -56,6 +77,10 @@ namespace GamePackBuilder.GUI
             try
             {
                 Directory.CreateDirectory(ConfigDir);
+
+                // Шифруем пароль перед записью.
+                ScreenScraperPasswordEncrypted = SecretProtector.Protect(ScreenScraperPassword);
+
                 string json = JsonSerializer.Serialize(this, JsonOptions);
                 File.WriteAllText(ConfigFile, json);
             }

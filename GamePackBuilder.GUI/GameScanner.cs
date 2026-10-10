@@ -25,6 +25,8 @@ namespace GamePackBuilder.GUI
     {
         /// <summary>
         /// Сканирует папку-источник рекурсивно. Находит известные системы и все игры в них.
+        /// Новые папки, которых нет в systems.json, автоматически добавляются
+        /// (с подстановкой данных из встроенной базы systems-base.json, если найдётся).
         /// </summary>
         public static List<SystemScanResult> Scan(string sourcePath)
         {
@@ -33,11 +35,24 @@ namespace GamePackBuilder.GUI
             if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath))
                 return results;
 
+            bool addedNew = false;
+
             foreach (var dir in Directory.GetDirectories(sourcePath))
             {
                 string folderName = Path.GetFileName(dir);
+                if (string.IsNullOrWhiteSpace(folderName)) continue;
+
                 var system = GameSystems.FindBySourceFolder(folderName);
-                if (system == null) continue;
+
+                // Новая папка — попробуем создать систему.
+                if (system == null)
+                {
+                    if (!HasContent(dir)) continue;   // пустые папки игнорируем
+
+                    system = CreateSystemForFolder(folderName, dir);
+                    if (GameSystems.Add(system))
+                        addedNew = true;
+                }
 
                 var result = new SystemScanResult
                 {
@@ -47,7 +62,6 @@ namespace GamePackBuilder.GUI
 
                 if (system.GamesAreFolders)
                 {
-                    // Игра = папка, внутри которой есть файл с нужным расширением.
                     foreach (var sub in Directory.GetDirectories(dir))
                     {
                         bool hasGameFile = Directory
@@ -58,7 +72,6 @@ namespace GamePackBuilder.GUI
                             result.Folders.Add(sub);
                     }
 
-                    // Плюс «плоские» игры прямо в корне системы (например, единичные .chd).
                     var rootFiles = Directory
                         .GetFiles(dir, "*", SearchOption.TopDirectoryOnly)
                         .Where(f => MatchesExtension(f, system.PrimaryExtensions));
@@ -66,7 +79,6 @@ namespace GamePackBuilder.GUI
                 }
                 else
                 {
-                    // Игра = файл. Рекурсивно по всем подпапкам.
                     var files = Directory
                         .GetFiles(dir, "*", SearchOption.AllDirectories)
                         .Where(f => MatchesExtension(f, system.PrimaryExtensions));
@@ -76,10 +88,93 @@ namespace GamePackBuilder.GUI
                 results.Add(result);
             }
 
+            // Если появились новые системы — сохраним systems.json.
+            if (addedNew)
+                GameSystems.Save();
+
             return results
                 .OrderBy(r => r.System.SourceFolder, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
+
+        /// <summary>Есть ли в папке хоть какой-то файл или подпапка.</summary>
+        private static bool HasContent(string dir)
+        {
+            try
+            {
+                return Directory.EnumerateFileSystemEntries(dir).Any();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Создать GameSystem для найденной папки.
+        /// Если папка есть в systems-base.json — заполняем всё оттуда.
+        /// Иначе — черновая система, пользователь заполнит её в редакторе.
+        /// </summary>
+        private static GameSystem CreateSystemForFolder(string folderName, string fullPath)
+        {
+            var baseEntry = SystemsBase.FindByFolder(folderName);
+
+            if (baseEntry != null)
+            {
+                return new GameSystem
+                {
+                    Id = baseEntry.Id,
+                    DisplayName = baseEntry.DisplayName,
+                    SourceFolder = folderName,
+                    TargetFolder = string.IsNullOrWhiteSpace(baseEntry.TargetFolder)
+                        ? baseEntry.Id
+                        : baseEntry.TargetFolder,
+                    PrimaryExtensions = baseEntry.PrimaryExtensions.ToArray(),
+                    GamesAreFolders = baseEntry.GamesAreFolders,
+                    ScreenScraperSystemId = baseEntry.ScreenScraperId
+                };
+            }
+
+            // Черновая система. Автоматически подхватываем расширения
+            // из файлов, которые лежат в папке — чтобы сразу что-то находилось.
+            var autoExtensions = CollectExtensions(fullPath);
+
+            return new GameSystem
+            {
+                Id = folderName,
+                DisplayName = folderName,
+                SourceFolder = folderName,
+                TargetFolder = folderName.ToLowerInvariant().Replace(' ', '_'),
+                PrimaryExtensions = autoExtensions,
+                GamesAreFolders = false,
+                ScreenScraperSystemId = 0
+            };
+        }
+
+        /// <summary>
+        /// Собрать все уникальные расширения файлов (рекурсивно), которые есть в папке.
+        /// Например: .smc, .zip, .txt. Используется только для черновых систем.
+        /// </summary>
+        private static string[] CollectExtensions(string folderName)
+        {
+            try
+            {
+                if (!Directory.Exists(folderName)) return Array.Empty<string>();
+
+                return Directory
+                    .GetFiles(folderName, "*", SearchOption.AllDirectories)
+                    .Select(f => Path.GetExtension(f).ToLowerInvariant())
+                    .Where(e => !string.IsNullOrWhiteSpace(e))
+                    .Distinct()
+                    .OrderBy(e => e)
+                    .ToArray();
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
+        }
+        
 
         /// <summary>
         /// Проверяет, соответствует ли файл хотя бы одному из расширений.

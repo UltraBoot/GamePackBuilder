@@ -24,9 +24,7 @@ namespace GamePackBuilder.GUI
 
         // ---------- Внутреннее ----------
 
-        private static string CacheDir =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "GamePackBuilder");
+        private static string CacheDir => AppPaths.DataDir;
 
         private static string CacheFile =>
             Path.Combine(CacheDir, "cache.json");

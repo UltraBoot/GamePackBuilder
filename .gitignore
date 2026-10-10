@@ -35,3 +35,7 @@ bld/
 # Others
 *.log
 *.tmp
+# Локальные ключи разработчика ScreenScraper (не публиковать!)
+ScreenScraperDevKeys.cs
+# Портативные данные приложения
+Data/

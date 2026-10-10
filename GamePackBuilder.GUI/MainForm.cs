@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -21,6 +22,7 @@ namespace GamePackBuilder.GUI
         private Button _btnCheck = null!;
         private Button _btnScan = null!;
         private Button _btnSystemsEditor = null!;
+        private Button _btnScreenScraper = null!;
         private ListBox _lstSystems = null!;
         private ListBox _lstGames = null!;
         private Label _lblStatus = null!;
@@ -30,6 +32,7 @@ namespace GamePackBuilder.GUI
         // ПОЛЯ: данные
         // ============================================================
         private List<SystemScanResult> _lastScan = new();
+        private AppSettings _settings = new();
         private bool _scanning = false;
         private DateTime _lastScanTime = DateTime.MinValue;
 
@@ -45,18 +48,21 @@ namespace GamePackBuilder.GUI
         public MainForm()
         {
             InitializeComponent();
+            _settings = AppSettings.Load();
             ThemeManager.LoadFromSettings();
             BuildUI();
             ThemeManager.Apply(this);
             Shown += MainForm_Shown;
+            KeyPreview = true;
+            KeyDown += MainForm_KeyDown;
         }
 
         private void BuildUI()
         {
             Text = "GamePackBuilder";
-            Size = new Size(1150, 950);
+            Size = new Size(1200, 950);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(950, 750);
+            MinimumSize = new Size(1000, 750);
             Font = new Font("Segoe UI", 10F);
 
             var table = new TableLayoutPanel
@@ -104,6 +110,9 @@ namespace GamePackBuilder.GUI
             _btnSystemsEditor = new Button { Text = "Редактор систем", Width = 160, Height = 32 };
             _btnSystemsEditor.Click += BtnSystemsEditor_Click;
 
+            _btnScreenScraper = new Button { Text = "ScreenScraper", Width = 160, Height = 32 };
+            _btnScreenScraper.Click += BtnScreenScraper_Click;
+
             var panelButtons = new FlowLayoutPanel
             {
                 FlowDirection = FlowDirection.LeftToRight,
@@ -114,6 +123,7 @@ namespace GamePackBuilder.GUI
             panelButtons.Controls.Add(_btnCheck);
             panelButtons.Controls.Add(_btnScan);
             panelButtons.Controls.Add(_btnSystemsEditor);
+            panelButtons.Controls.Add(_btnScreenScraper);
             var _btnTheme = new Button { Text = "🌙", Width = 44, Height = 32, Font = new Font("Segoe UI", 12F) };
             _btnTheme.Click += (s, e) =>
             {
@@ -226,6 +236,16 @@ namespace GamePackBuilder.GUI
             Controls.Add(_lblStatus);
         }
 
+        private void MainForm_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Control && e.Shift && e.KeyCode == Keys.D)
+            {
+                using var form = new DebugForm();
+                form.ShowDialog(this);
+                e.Handled = true;
+            }
+        }
+
         // ============================================================
         // ЗАПУСК
         // ============================================================
@@ -235,17 +255,16 @@ namespace GamePackBuilder.GUI
             // Загружаем список систем из JSON
             GameSystems.Reload();
 
-            var s = AppSettings.Load();
-            _txtSource.Text = s.SourcePath;
-            _txtTarget.Text = s.TargetPath;
+            _txtSource.Text = _settings.SourcePath;
+            _txtTarget.Text = _settings.TargetPath;
 
-            if (string.IsNullOrWhiteSpace(s.SourcePath) || !Directory.Exists(s.SourcePath))
+            if (string.IsNullOrWhiteSpace(_settings.SourcePath) || !Directory.Exists(_settings.SourcePath))
             {
                 SetStatus("Укажи источник игр и нажми «Сканировать источник».", Color.Gray);
                 return;
             }
 
-            var cache = ScanCache.Load(s.SourcePath);
+            var cache = ScanCache.Load(_settings.SourcePath);
             if (cache != null)
             {
                 _lastScan = cache.ToResults();
@@ -263,7 +282,7 @@ namespace GamePackBuilder.GUI
                 SetStatus("Первое сканирование, подожди…", Color.DodgerBlue);
             }
 
-            await ScanInBackgroundAsync(s.SourcePath, isAutomatic: true);
+            await ScanInBackgroundAsync(_settings.SourcePath, isAutomatic: true);
         }
 
         // ============================================================
@@ -286,12 +305,9 @@ namespace GamePackBuilder.GUI
         {
             try
             {
-                var s = new AppSettings
-                {
-                    SourcePath = _txtSource.Text.Trim(),
-                    TargetPath = _txtTarget.Text.Trim()
-                };
-                s.Save();
+                _settings.SourcePath = _txtSource.Text.Trim();
+                _settings.TargetPath = _txtTarget.Text.Trim();
+                _settings.Save();
                 SetStatus("Настройки сохранены.", Color.Green);
             }
             catch (Exception ex)
@@ -352,6 +368,11 @@ namespace GamePackBuilder.GUI
             {
                 SetStatus("Список систем обновлён.", Color.Green);
             }
+        }
+        private void BtnScreenScraper_Click(object? sender, EventArgs e)
+        {
+            using var form = new ScreenScraperSettingsForm(_settings);
+            form.ShowDialog(this);
         }
 
         // ============================================================
