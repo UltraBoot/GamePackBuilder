@@ -254,12 +254,49 @@ namespace GamePackBuilder.GUI
             _lstScreenshots.ItemMouseHover += LstScreenshots_ItemMouseHover;
             _lstScreenshots.MouseLeave += (s, e) => HidePreview();
 
+            // ---- Панель ссылок на дополнительные медиа ----
+            _mediaLinksPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 44,
+                Padding = new Padding(16, 6, 16, 6),
+                FlowDirection = FlowDirection.LeftToRight,
+                Visible = false
+            };
+
+            _btnOpenWheel = MakeMediaLinkButton("Логотип");
+            _btnOpenWheel.Click += (_, _) => OpenMediaFile(_info.WheelPath);
+
+            _btnOpenFanart = MakeMediaLinkButton("Фон");
+            _btnOpenFanart.Click += (_, _) => OpenMediaFile(_info.FanartPath);
+
+            _btnOpenVideo = MakeMediaLinkButton("Видео");
+            _btnOpenVideo.Click += (_, _) => OpenMediaFile(_info.VideoPath);
+
+            _btnOpenManual = MakeMediaLinkButton("Мануал");
+            _btnOpenManual.Click += (_, _) => OpenMediaFile(_info.ManualPath);
+
+            _mediaLinksPanel.Controls.Add(_btnOpenWheel);
+            _mediaLinksPanel.Controls.Add(_btnOpenFanart);
+            _mediaLinksPanel.Controls.Add(_btnOpenVideo);
+            _mediaLinksPanel.Controls.Add(_btnOpenManual);
+
             Controls.Add(mainPanel);
+            Controls.Add(_mediaLinksPanel);
             Controls.Add(bottomPanel);
             Controls.Add(topPanel);
             Controls.Add(_previewBox);
             _previewBox.BringToFront();
         }
+
+        private static Button MakeMediaLinkButton(string text) => new()
+        {
+            Text = text,
+            Width = 110,
+            Height = 28,
+            FlatStyle = FlatStyle.Flat,
+            Visible = false
+        };
 
         private static Label MakeCaption(string text) => new Label
         {

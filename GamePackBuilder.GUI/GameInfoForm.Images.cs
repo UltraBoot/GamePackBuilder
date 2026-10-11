@@ -181,6 +181,53 @@ namespace GamePackBuilder.GUI
                 old.Dispose();
             }
         }
+        /// <summary>Обновить видимость ссылок на медиа — в зависимости от того, есть ли файлы.</summary>
+        /// <summary>Обновить видимость ссылок на медиа — в зависимости от того, есть ли файлы.</summary>
+        private void UpdateMediaLinks()
+        {
+            bool hasWheel = File.Exists(_info.WheelPath);
+            bool hasFanart = File.Exists(_info.FanartPath);
+            bool hasVideo = File.Exists(_info.VideoPath);
+            bool hasManual = File.Exists(_info.ManualPath);
+
+            DebugLog.Write($"UpdateMediaLinks: Wheel={hasWheel}, Fanart={hasFanart}, Video={hasVideo}, Manual={hasManual}");
+
+            // Сначала показываем панель — иначе Visible у кнопок не сработает.
+            _mediaLinksPanel.Visible = hasWheel || hasFanart || hasVideo || hasManual;
+
+            // Теперь можно управлять видимостью кнопок.
+            _btnOpenWheel.Visible = hasWheel;
+            _btnOpenFanart.Visible = hasFanart;
+            _btnOpenVideo.Visible = hasVideo;
+            _btnOpenManual.Visible = hasManual;
+
+            DebugLog.Write($"UpdateMediaLinks: panel.Visible={_mediaLinksPanel.Visible}");
+        }
+
+        /// <summary>Открыть файл системным приложением (Paint, плеер, браузер).</summary>
+        private void OpenMediaFile(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                MessageBox.Show(this, "Файл не найден:\r\n" + path,
+                    "Не найдено", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Не удалось открыть файл:\r\n" + ex.Message,
+                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
     }
 
 }

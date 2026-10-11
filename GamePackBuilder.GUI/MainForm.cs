@@ -24,6 +24,8 @@ namespace GamePackBuilder.GUI
         private Button _btnSystemsEditor = null!;
         private Button _btnScreenScraper = null!;
         private Button _btnScrapeSystem = null!;
+        private Button _btnPreviewGame = null!;
+        private Button _btnOpenCard = null!;
         private ListBox _lstSystems = null!;
         private ListBox _lstGames = null!;
         private Label _lblStatus = null!;
@@ -225,8 +227,44 @@ namespace GamePackBuilder.GUI
             table.Controls.Add(lblGames, 0, 6);
             table.SetColumnSpan(lblGames, 3);
 
-            table.Controls.Add(_lstGames, 0, 7);
-            table.SetColumnSpan(_lstGames, 3);
+            // Контейнер: слева список игр, справа — вертикальная панель с кнопками.
+            var gamesContainer = new Panel { Dock = DockStyle.Fill };
+
+            var gamesButtonsPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right,
+                Width = 140,
+                FlowDirection = FlowDirection.TopDown,
+                Padding = new Padding(6),
+                WrapContents = false
+            };
+
+            _btnPreviewGame = new Button
+            {
+                Text = "Просмотр",
+                Width = 120,
+                Height = 36,
+                Enabled = false
+            };
+            _btnPreviewGame.Click += BtnPreviewGame_Click;
+
+            _btnOpenCard = new Button
+            {
+                Text = "Карточка",
+                Width = 120,
+                Height = 36,
+                Enabled = false
+            };
+            _btnOpenCard.Click += BtnOpenCard_Click;
+
+            gamesButtonsPanel.Controls.Add(_btnPreviewGame);
+            gamesButtonsPanel.Controls.Add(_btnOpenCard);
+
+            gamesContainer.Controls.Add(_lstGames);
+            gamesContainer.Controls.Add(gamesButtonsPanel);
+
+            table.Controls.Add(gamesContainer, 0, 7);
+            table.SetColumnSpan(gamesContainer, 3);
 
             // Строка статуса
             _lblStatus = new Label
@@ -677,86 +715,93 @@ namespace GamePackBuilder.GUI
         // ============================================================
         private void LstGames_DoubleClick(object? sender, EventArgs e)
         {
+            OpenCardForSelected();
+        }
+
+        /// <summary>Путь к выбранной в нижнем списке игре (файл или папка).</summary>
+        private string? GetSelectedGamePath()
+        {
             int idx = _lstGames.SelectedIndex;
-            if (idx < 0) return;
-            if (_lstSystems.SelectedIndex < 0) return;
-            if (_lstSystems.SelectedIndex >= _lastScan.Count) return;
+            if (idx < 0) return null;
+            if (_lstSystems.SelectedIndex < 0 || _lstSystems.SelectedIndex >= _lastScan.Count)
+                return null;
 
             var result = _lastScan[_lstSystems.SelectedIndex];
-
-            string? fullPath = null;
             int folderCount = result.Folders.Count;
 
-            var foldersSorted = result.Folders.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
-            var filesSorted = result.Files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+            var foldersSorted = result.Folders
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+            var filesSorted = result.Files
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
 
             if (idx < folderCount)
-            {
-                fullPath = foldersSorted.ElementAtOrDefault(idx);
-            }
-            else
-            {
-                int fileIdx = idx - folderCount;
-                fullPath = filesSorted.ElementAtOrDefault(fileIdx);
-            }
+                return foldersSorted.ElementAtOrDefault(idx);
 
-            if (fullPath == null)
-            {
-                SetStatus("Не удалось найти файл игры.", Color.Red);
-                return;
-            }
+            return filesSorted.ElementAtOrDefault(idx - folderCount);
+        }
+
+        private void BtnPreviewGame_Click(object? sender, EventArgs e)
+        {
+            OpenPreviewForSelected();
+        }
+
+        private void BtnOpenCard_Click(object? sender, EventArgs e)
+        {
+            OpenCardForSelected();
+        }
+
+        private void OpenCardForSelected()
+        {
+            string? fullPath = GetSelectedGamePath();
+            if (fullPath == null) return;
+
+            var result = _lastScan[_lstSystems.SelectedIndex];
 
             using var info = new GameInfoForm(result.System.Id, result.SourcePath, fullPath);
             info.ShowDialog(this);
         }
 
         /// <summary>
-        /// Одинарный выбор игры в нижнем списке — показать/обновить окно предпросмотра.
-        /// Двойной клик — открыть карточку (обрабатывается отдельно).
+        /// Открыть (или обновить) окно предпросмотра для выбранной игры.
+        /// Включает обложку, скриншоты, логотип и фон.
         /// </summary>
-        private void LstGames_SelectedIndexChanged(object? sender, EventArgs e)
+        private void OpenPreviewForSelected()
         {
-            if (_scanning) return;
-
-            int idx = _lstGames.SelectedIndex;
-            if (idx < 0) return;
-            if (_lstSystems.SelectedIndex < 0 || _lstSystems.SelectedIndex >= _lastScan.Count)
-                return;
-
-            var result = _lastScan[_lstSystems.SelectedIndex];
-
-            // Определяем путь к выбранной игре — как в LstGames_DoubleClick.
-            string? fullPath = null;
-            int folderCount = result.Folders.Count;
-
-            var foldersSorted = result.Folders.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
-            var filesSorted = result.Files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
-
-            if (idx < folderCount)
-                fullPath = foldersSorted.ElementAtOrDefault(idx);
-            else
-                fullPath = filesSorted.ElementAtOrDefault(idx - folderCount);
-
+            string? fullPath = GetSelectedGamePath();
             if (fullPath == null) return;
 
-            // Берём сохранённую инфу об игре.
+            var result = _lastScan[_lstSystems.SelectedIndex];
             string relPath = Path.GetRelativePath(result.SourcePath, fullPath);
+
             GameInfoStore.Load();
             var info = GameInfoStore.Get(result.System.Id, relPath);
+            // Подтягиваем медиа с диска, если в store ещё ничего нет.
+            string gameName = Directory.Exists(fullPath)
+                ? Path.GetFileName(fullPath)
+                : Path.GetFileNameWithoutExtension(fullPath);
 
-            // Собираем список медиа: сначала обложка, потом скриншоты.
+            MediaScanner.EnrichGameInfo(info, result.SourcePath, gameName);
+
+            // Собираем список медиа: обложка → скриншоты → логотип → фон.
             var media = new List<string>();
-            if (!string.IsNullOrWhiteSpace(info.CoverPath))
-                media.Add(info.CoverPath);
-            if (info.Screenshots.Count > 0)
-                media.AddRange(info.Screenshots);
 
-            // Заголовок — либо из данных, либо имя файла.
+            if (!string.IsNullOrWhiteSpace(info.CoverPath) && File.Exists(info.CoverPath))
+                media.Add(info.CoverPath);
+
+            foreach (var s in info.Screenshots)
+                if (!string.IsNullOrWhiteSpace(s) && File.Exists(s))
+                    media.Add(s);
+
+            if (!string.IsNullOrWhiteSpace(info.WheelPath) && File.Exists(info.WheelPath))
+                media.Add(info.WheelPath);
+
+            if (!string.IsNullOrWhiteSpace(info.FanartPath) && File.Exists(info.FanartPath))
+                media.Add(info.FanartPath);
+
             string title = !string.IsNullOrWhiteSpace(info.Title)
                 ? info.Title
                 : Path.GetFileName(fullPath);
 
-            // Обновляем существующее окно или открываем новое.
             if (_previewForm == null || _previewForm.IsDisposed)
             {
                 _previewForm = new GamePreviewForm();
@@ -769,6 +814,23 @@ namespace GamePackBuilder.GUI
                 _previewForm.SetContent(title, media);
                 _previewForm.Activate();
             }
+        }
+
+        /// <summary>
+        /// Одинарный выбор игры в нижнем списке — показать/обновить окно предпросмотра.
+        /// Двойной клик — открыть карточку (обрабатывается отдельно).
+        /// </summary>
+        /// <summary>
+        /// Одинарный клик по игре — просто выделение и включение кнопок справа.
+        /// Само открытие превью или карточки — только по явным кнопкам.
+        /// </summary>
+        private void LstGames_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_scanning) return;
+
+            bool has = GetSelectedGamePath() != null;
+            _btnPreviewGame.Enabled = has;
+            _btnOpenCard.Enabled = has;
         }
 
         // ============================================================

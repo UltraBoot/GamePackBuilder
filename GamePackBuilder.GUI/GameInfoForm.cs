@@ -40,6 +40,11 @@ namespace GamePackBuilder.GUI
         private ProgressBar _progress = null!;
         private TabControl _tabs = null!;
         private PictureBox _previewBox = null!;
+        private FlowLayoutPanel _mediaLinksPanel = null!;
+        private Button _btnOpenWheel = null!;
+        private Button _btnOpenFanart = null!;
+        private Button _btnOpenVideo = null!;
+        private Button _btnOpenManual = null!;
 
         public GameInfoForm(string systemId, string basePath, string filePath)
         {
@@ -63,67 +68,19 @@ namespace GamePackBuilder.GUI
             GameInfoStore.Load();
             _info = GameInfoStore.Get(_systemId, _relativePath);
 
-            if (string.IsNullOrWhiteSpace(_info.Title))
-            {
-                string name = Directory.Exists(_filePath)
-                    ? Path.GetFileName(_filePath)
-                    : Path.GetFileNameWithoutExtension(_filePath);
-                _info.Title = name;
-            }
-
-            // Ищем уже существующие медиа в папке системы — но НЕ переносим, только читаем.
-            EnrichMediaFromDisk();
-
-            PushInfoToUi();
-        }
-
-        /// <summary>
-        /// Дополняет данные игры ссылками на существующие медиафайлы.
-        /// Ничего НЕ перемещает и НЕ удаляет — только читает.
-        /// Заполняет поля, если они пустые (не трогает уже установленные пути).
-        /// </summary>
-        private void EnrichMediaFromDisk()
-        {
             string gameName = Directory.Exists(_filePath)
                 ? Path.GetFileName(_filePath)
                 : Path.GetFileNameWithoutExtension(_filePath);
 
-            if (string.IsNullOrWhiteSpace(_info.CoverPath))
-            {
-                var cover = MediaScanner.FindCover(_basePath, gameName);
-                if (cover != null) _info.CoverPath = cover;
-            }
+            if (string.IsNullOrWhiteSpace(_info.Title))
+                _info.Title = gameName;
 
-            if (_info.Screenshots.Count == 0)
-            {
-                var shots = MediaScanner.FindScreenshots(_basePath, gameName);
-                if (shots.Count > 0) _info.Screenshots.AddRange(shots);
-            }
+            // Ищем уже существующие медиа в папке системы — но НЕ переносим, только читаем.
+            MediaScanner.EnrichGameInfo(_info, _basePath, gameName);
 
-            if (string.IsNullOrWhiteSpace(_info.WheelPath))
-            {
-                var wheel = MediaScanner.FindWheel(_basePath, gameName);
-                if (wheel != null) _info.WheelPath = wheel;
-            }
-
-            if (string.IsNullOrWhiteSpace(_info.VideoPath))
-            {
-                var video = MediaScanner.FindVideo(_basePath, gameName);
-                if (video != null) _info.VideoPath = video;
-            }
-
-            if (string.IsNullOrWhiteSpace(_info.FanartPath))
-            {
-                var fanart = MediaScanner.FindFanart(_basePath, gameName);
-                if (fanart != null) _info.FanartPath = fanart;
-            }
-
-            if (string.IsNullOrWhiteSpace(_info.ManualPath))
-            {
-                var manual = MediaScanner.FindManual(_basePath, gameName);
-                if (manual != null) _info.ManualPath = manual;
-            }
+            PushInfoToUi();
         }
+
 
         private void PushInfoToUi()
         {
@@ -136,6 +93,7 @@ namespace GamePackBuilder.GUI
 
             LoadCover();
             LoadScreenshots();
+            UpdateMediaLinks();
         }
 
         private void PullUiToInfo()

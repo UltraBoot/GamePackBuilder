@@ -151,5 +151,47 @@ namespace GamePackBuilder.GUI
             string ext = Path.GetExtension(path).ToLowerInvariant();
             return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp";
         }
+        /// <summary>
+        /// Дополняет GameInfo ссылками на существующие медиафайлы системы.
+        /// Ничего НЕ перемещает и НЕ удаляет — только читает и заполняет пустые поля.
+        /// </summary>
+        public static void EnrichGameInfo(GameInfo info, string systemFolder, string gameName)
+        {
+            if (string.IsNullOrWhiteSpace(info.CoverPath))
+            {
+                var cover = FindCover(systemFolder, gameName);
+                if (cover != null) info.CoverPath = cover;
+            }
+
+            if (info.Screenshots.Count == 0)
+            {
+                var shots = FindScreenshots(systemFolder, gameName);
+                if (shots.Count > 0) info.Screenshots.AddRange(shots);
+            }
+
+            if (string.IsNullOrWhiteSpace(info.WheelPath))
+            {
+                var wheel = FindWheel(systemFolder, gameName);
+                if (wheel != null) info.WheelPath = wheel;
+            }
+
+            if (string.IsNullOrWhiteSpace(info.VideoPath))
+            {
+                var video = FindVideo(systemFolder, gameName);
+                if (video != null) info.VideoPath = video;
+            }
+
+            if (string.IsNullOrWhiteSpace(info.FanartPath))
+            {
+                var fanart = FindFanart(systemFolder, gameName);
+                if (fanart != null) info.FanartPath = fanart;
+            }
+
+            if (string.IsNullOrWhiteSpace(info.ManualPath))
+            {
+                var manual = FindManual(systemFolder, gameName);
+                if (manual != null) info.ManualPath = manual;
+            }
+        }
     }
 }
