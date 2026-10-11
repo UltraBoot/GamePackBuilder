@@ -39,6 +39,7 @@ namespace GamePackBuilder.GUI
         private Button _btnClose = null!;
         private ProgressBar _progress = null!;
         private TabControl _tabs = null!;
+        private PictureBox _previewBox = null!;
 
         public GameInfoForm(string systemId, string basePath, string filePath)
         {
@@ -70,7 +71,58 @@ namespace GamePackBuilder.GUI
                 _info.Title = name;
             }
 
+            // Ищем уже существующие медиа в папке системы — но НЕ переносим, только читаем.
+            EnrichMediaFromDisk();
+
             PushInfoToUi();
+        }
+
+        /// <summary>
+        /// Дополняет данные игры ссылками на существующие медиафайлы.
+        /// Ничего НЕ перемещает и НЕ удаляет — только читает.
+        /// Заполняет поля, если они пустые (не трогает уже установленные пути).
+        /// </summary>
+        private void EnrichMediaFromDisk()
+        {
+            string gameName = Directory.Exists(_filePath)
+                ? Path.GetFileName(_filePath)
+                : Path.GetFileNameWithoutExtension(_filePath);
+
+            if (string.IsNullOrWhiteSpace(_info.CoverPath))
+            {
+                var cover = MediaScanner.FindCover(_basePath, gameName);
+                if (cover != null) _info.CoverPath = cover;
+            }
+
+            if (_info.Screenshots.Count == 0)
+            {
+                var shots = MediaScanner.FindScreenshots(_basePath, gameName);
+                if (shots.Count > 0) _info.Screenshots.AddRange(shots);
+            }
+
+            if (string.IsNullOrWhiteSpace(_info.WheelPath))
+            {
+                var wheel = MediaScanner.FindWheel(_basePath, gameName);
+                if (wheel != null) _info.WheelPath = wheel;
+            }
+
+            if (string.IsNullOrWhiteSpace(_info.VideoPath))
+            {
+                var video = MediaScanner.FindVideo(_basePath, gameName);
+                if (video != null) _info.VideoPath = video;
+            }
+
+            if (string.IsNullOrWhiteSpace(_info.FanartPath))
+            {
+                var fanart = MediaScanner.FindFanart(_basePath, gameName);
+                if (fanart != null) _info.FanartPath = fanart;
+            }
+
+            if (string.IsNullOrWhiteSpace(_info.ManualPath))
+            {
+                var manual = MediaScanner.FindManual(_basePath, gameName);
+                if (manual != null) _info.ManualPath = manual;
+            }
         }
 
         private void PushInfoToUi()
@@ -170,93 +222,50 @@ namespace GamePackBuilder.GUI
             {
                 MessageBox.Show(this,
                     $"Для системы «{system.DisplayName}» не задан ScreenScraper ID.\r\n\r\n" +
-                    "Открой «Редактор систем» в главном окне и укажи числовой ID " +
-                    "(например, для Mega Drive — 1, для NES — 3).\r\n\r\n" +
-                    "Полный список ID можно посмотреть по адресу:\r\n" +
-                    "https://www.screenscraper.fr/api2/systemesListe.php?devid=...&output=json",
+                    "Открой «Редактор систем» в главном окне и укажи числовой ID.",
                     "Нет ID", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            string romName = Path.GetFileName(_filePath);
             _btnScrape.Enabled = false;
             _progress.Visible = true;
             _progress.Style = ProgressBarStyle.Marquee;
-            DebugLog.Write($"Scrape: system={_systemId}, ssId={system.ScreenScraperSystemId}, rom={romName}");
+            _lblFilePath.Text = "Загрузка с ScreenScraper...";
+            _lblFilePath.ForeColor = Color.DodgerBlue;
+            DebugLog.Write($"Scrape (карточка): {_systemId}, rom={Path.GetFileName(_filePath)}");
+
+            // Спросим у пользователя, что качать.
+            using var optionsForm = new MediaDownloadOptionsForm();
+            if (optionsForm.ShowDialog(this) != DialogResult.OK)
+                return;
 
             try
             {
-                var client = new ScreenScraperClient();
-                var response = await client.GetGameInfoByNameAsync(
-                    s.ScreenScraperUser, s.ScreenScraperPassword, system.ScreenScraperSystemId, romName);
+                var service = new ScreenScraperService();
+                var result = await service.ScrapeGameAsync(
+                    system, _info, _filePath, _basePath,
+                    s.ScreenScraperUser, s.ScreenScraperPassword,
+                    optionsForm.Options);
 
-                var g = response.Response?.Game;
-                if (g == null)
+                if (result.GameNotFound)
                 {
-                    MessageBox.Show(this, "Игра не найдена в базе ScreenScraper.",
-                        "Не найдено", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    DebugLog.Write("Игра не найдена.");
+                    _lblFilePath.Text = "Игра не найдена в базе ScreenScraper.";
+                    _lblFilePath.ForeColor = Color.OrangeRed;
                     return;
                 }
 
-                int filled = 0;
-
-                // Заполняем пустые ИЛИ ранее скрапнутые поля (но не правки пользователя).
-                if (CanSet("Title", _info.ScraperFields, _txtTitle.Text) && g.Names?.Count > 0)
+                if (!result.Success || result.Info == null)
                 {
-                    _txtTitle.Text = g.Names[0].Text ?? "";
-                    MarkScraped("Title");
-                    filled++;
+                    _lblFilePath.Text = "Ошибка: " + (result.ErrorMessage ?? "неизвестно");
+                    _lblFilePath.ForeColor = Color.Firebrick;
+                    return;
                 }
 
-                if (CanSet("Year", _info.ScraperFields, _txtYear.Text))
-                {
-                    var date = PickByRegion(g.Dates) ?? g.Dates?[0];
-                    if (!string.IsNullOrWhiteSpace(date?.Text))
-                    {
-                        _txtYear.Text = date!.Text!.Length >= 4 ? date.Text.Substring(0, 4) : date.Text;
-                        MarkScraped("Year");
-                        filled++;
-                    }
-                }
+                _info = result.Info;
+                PushInfoToUi();
 
-                if (CanSet("Developer", _info.ScraperFields, _txtDeveloper.Text) && g.Developer != null)
-                {
-                    _txtDeveloper.Text = g.Developer.Text ?? "";
-                    MarkScraped("Developer");
-                    filled++;
-                }
-
-                if (CanSet("Genre", _info.ScraperFields, _txtGenre.Text) && g.Genres?.Count > 0)
-                {
-                    string genre = g.Genres[0].Names?.Find(n => n.Language == "en")?.Text
-                                ?? g.Genres[0].Names?[0].Text
-                                ?? "";
-                    _txtGenre.Text = genre;
-                    MarkScraped("Genre");
-                    filled++;
-                }
-
-                if (CanSet("Players", _info.ScraperFields, _txtPlayers.Text) && g.Players != null)
-                {
-                    _txtPlayers.Text = g.Players.Text ?? "";
-                    MarkScraped("Players");
-                    filled++;
-                }
-
-                if (CanSet("Description", _info.ScraperFields, _txtDescription.Text) && g.Descriptions?.Count > 0)
-                {
-                    string desc = g.Descriptions.Find(d => d.Language == "en")?.Text
-                               ?? g.Descriptions[0].Text
-                               ?? "";
-                    _txtDescription.Text = desc;
-                    MarkScraped("Description");
-                    filled++;
-                }
-
-                _lblFilePath.Text = $"Получено с ScreenScraper. Заполнено пустых полей: {filled}.";
+                _lblFilePath.Text = $"Готово. Полей: {result.TextFieldsFilled}, медиа: {result.MediaDownloaded}.";
                 _lblFilePath.ForeColor = Color.Green;
-                DebugLog.Write($"Scrape успешен. Заполнено полей: {filled}.");
 
                 if (!_editMode)
                     SetEditMode(true);
@@ -275,6 +284,7 @@ namespace GamePackBuilder.GUI
             }
         }
 
+        
         /// <summary>
         /// Можно ли заполнить поле: пустое или ранее заполнено скрапером.
         /// Если поле заполнено вручную (не в ScraperFields) — не трогаем.
@@ -293,17 +303,6 @@ namespace GamePackBuilder.GUI
                 _info.ScraperFields.Add(fieldName);
         }
         /// <summary>Выбирает элемент с приоритетным регионом: wor -> us -> eu -> jp.</summary>
-        private static ScreenScraperLocalizedText? PickByRegion(
-            System.Collections.Generic.List<ScreenScraperLocalizedText>? list)
-        {
-            if (list == null || list.Count == 0) return null;
-            string[] order = { "wor", "us", "eu", "jp" };
-            foreach (var reg in order)
-            {
-                var hit = list.Find(x => x.Region == reg);
-                if (hit != null) return hit;
-            }
-            return null;
-        }
+        
     }
 }

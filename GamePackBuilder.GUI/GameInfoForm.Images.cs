@@ -118,5 +118,69 @@ namespace GamePackBuilder.GUI
 
             LoadScreenshots();
         }
+        // ============================================================
+        // HOVER-ПРЕВЬЮ СКРИНШОТОВ
+        // ============================================================
+        private void LstScreenshots_ItemMouseHover(object? sender, ListViewItemMouseHoverEventArgs e)
+        {
+            if (e.Item == null)
+            {
+                HidePreview();
+                return;
+            }
+
+            string? path = e.Item.Tag?.ToString();
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                HidePreview();
+                return;
+            }
+
+            try
+            {
+                if (_previewBox.Image != null)
+                {
+                    var old = _previewBox.Image;
+                    _previewBox.Image = null;
+                    old.Dispose();
+                }
+
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read);
+                _previewBox.Image = Image.FromStream(fs);
+
+                // Позиция — рядом с курсором, но внутри формы.
+                var cursor = PointToClient(Cursor.Position);
+                int x = cursor.X + 20;
+                int y = cursor.Y + 20;
+
+                if (x + _previewBox.Width > ClientSize.Width)
+                    x = ClientSize.Width - _previewBox.Width - 10;
+                if (y + _previewBox.Height > ClientSize.Height)
+                    y = ClientSize.Height - _previewBox.Height - 10;
+                if (x < 0) x = 0;
+                if (y < 0) y = 0;
+
+                _previewBox.Location = new Point(x, y);
+                _previewBox.Visible = true;
+                _previewBox.BringToFront();
+            }
+            catch
+            {
+                HidePreview();
+            }
+        }
+
+        private void HidePreview()
+        {
+            _previewBox.Visible = false;
+
+            if (_previewBox.Image != null)
+            {
+                var old = _previewBox.Image;
+                _previewBox.Image = null;
+                old.Dispose();
+            }
+        }
     }
+
 }

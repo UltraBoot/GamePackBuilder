@@ -92,8 +92,14 @@ namespace GamePackBuilder.GUI
                     string oldFile = Path.Combine(oldDir, name);
                     string newFile = Path.Combine(targetDir, name);
 
-                    if (File.Exists(oldFile) && !File.Exists(newFile))
+                    if (!File.Exists(oldFile)) continue;
+
+                    // Копируем один раз — потом переименовываем оригинал,
+                    // чтобы не копировать его при каждом запуске.
+                    if (!File.Exists(newFile))
                         File.Copy(oldFile, newFile);
+
+                    File.Move(oldFile, oldFile + ".migrated", overwrite: true);
                 }
             }
             catch

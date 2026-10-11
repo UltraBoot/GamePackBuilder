@@ -34,10 +34,6 @@ namespace GamePackBuilder.GUI
             {
                 Directory.CreateDirectory(StoreDir);
 
-                // Если есть старый единый файл — разложим его по файлам систем.
-                if (File.Exists(LegacyFile))
-                    MigrateLegacy();
-
                 // Читаем все *.json из папки.
                 foreach (var file in Directory.GetFiles(StoreDir, "*.json"))
                 {
@@ -134,42 +130,6 @@ namespace GamePackBuilder.GUI
         /// Разложить старый единый gameinfo.json по файлам систем.
         /// После миграции старый файл переименовывается в gameinfo.json.old.
         /// </summary>
-        private static void MigrateLegacy()
-        {
-            try
-            {
-                string json = File.ReadAllText(LegacyFile);
-                var old = JsonSerializer.Deserialize<Dictionary<string, GameInfo>>(json);
-                if (old == null) return;
-
-                foreach (var kv in old)
-                {
-                    // Ключ формата "systemId|relativePath".
-                    int sep = kv.Key.IndexOf('|');
-                    if (sep <= 0) continue;
-
-                    string systemId = kv.Key.Substring(0, sep);
-                    string relPath = kv.Key.Substring(sep + 1);
-
-                    if (!_data.TryGetValue(systemId, out var map))
-                    {
-                        map = new Dictionary<string, GameInfo>(StringComparer.OrdinalIgnoreCase);
-                        _data[systemId] = map;
-                    }
-                    map[MakeKey(relPath)] = kv.Value;
-                }
-
-                // Пишем новые файлы и убираем старый.
-                Save();
-
-                string backup = LegacyFile + ".old";
-                if (File.Exists(backup)) File.Delete(backup);
-                File.Move(LegacyFile, backup);
-            }
-            catch
-            {
-                // Если миграция не удалась — не критично, оставим как есть.
-            }
-        }
+        
     }
 }

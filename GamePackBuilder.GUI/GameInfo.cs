@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace GamePackBuilder.GUI
 {
     /// <summary>
-    /// Информация об одной игре, которую ведёт пользователь.
+    /// Информация об одной игре. Пути к медиа хранятся отдельно для каждого типа.
     /// </summary>
     public class GameInfo
     {
@@ -16,15 +16,29 @@ namespace GamePackBuilder.GUI
         public string Players { get; set; } = "";
         public string Description { get; set; } = "";
 
-        /// <summary>Путь к локальному файлу обложки (jpg/png). Может быть пустым.</summary>
+        // ---------- Медиа ----------
+
+        /// <summary>Путь к обложке (boxart).</summary>
         public string CoverPath { get; set; } = "";
 
-        /// <summary>Пути к локальным скриншотам.</summary>
+        /// <summary>Пути к скриншотам (screenshot / art).</summary>
         public List<string> Screenshots { get; set; } = new();
+
+        /// <summary>Путь к логотипу (wheel).</summary>
+        public string WheelPath { get; set; } = "";
+
+        /// <summary>Путь к видео.</summary>
+        public string VideoPath { get; set; } = "";
+
+        /// <summary>Путь к фону (fanart).</summary>
+        public string FanartPath { get; set; } = "";
+
+        /// <summary>Путь к мануалу (PDF).</summary>
+        public string ManualPath { get; set; } = "";
+
         /// <summary>
         /// Имена полей, которые были заполнены автоматически с ScreenScraper.
         /// При повторном скрапинге эти поля обновляются, а правки пользователя — нет.
-        /// Пустой список означает, что все данные введены вручную.
         /// </summary>
         public List<string> ScraperFields { get; set; } = new();
 
@@ -37,6 +51,10 @@ namespace GamePackBuilder.GUI
             string.IsNullOrWhiteSpace(Players) &&
             string.IsNullOrWhiteSpace(Description) &&
             string.IsNullOrWhiteSpace(CoverPath) &&
-            Screenshots.Count == 0;
+            Screenshots.Count == 0 &&
+            string.IsNullOrWhiteSpace(WheelPath) &&
+            string.IsNullOrWhiteSpace(VideoPath) &&
+            string.IsNullOrWhiteSpace(FanartPath) &&
+            string.IsNullOrWhiteSpace(ManualPath);
     }
 }

@@ -23,6 +23,7 @@ namespace GamePackBuilder.GUI
         private Button _btnScan = null!;
         private Button _btnSystemsEditor = null!;
         private Button _btnScreenScraper = null!;
+        private Button _btnScrapeSystem = null!;
         private ListBox _lstSystems = null!;
         private ListBox _lstGames = null!;
         private Label _lblStatus = null!;
@@ -34,6 +35,7 @@ namespace GamePackBuilder.GUI
         private List<SystemScanResult> _lastScan = new();
         private AppSettings _settings = new();
         private bool _scanning = false;
+        private GamePreviewForm? _previewForm = null;
         private DateTime _lastScanTime = DateTime.MinValue;
 
         /// <summary>Сколько игр было в каждой системе на прошлом скане (для отчёта изменений).</summary>
@@ -113,6 +115,9 @@ namespace GamePackBuilder.GUI
             _btnScreenScraper = new Button { Text = "ScreenScraper", Width = 160, Height = 32 };
             _btnScreenScraper.Click += BtnScreenScraper_Click;
 
+            _btnScrapeSystem = new Button { Text = "Скачать медиа системы", Width = 200, Height = 32, Enabled = false };
+            _btnScrapeSystem.Click += BtnScrapeSystem_Click;
+
             var panelButtons = new FlowLayoutPanel
             {
                 FlowDirection = FlowDirection.LeftToRight,
@@ -124,6 +129,7 @@ namespace GamePackBuilder.GUI
             panelButtons.Controls.Add(_btnScan);
             panelButtons.Controls.Add(_btnSystemsEditor);
             panelButtons.Controls.Add(_btnScreenScraper);
+            panelButtons.Controls.Add(_btnScrapeSystem);
             var _btnTheme = new Button { Text = "🌙", Width = 44, Height = 32, Font = new Font("Segoe UI", 12F) };
             _btnTheme.Click += (s, e) =>
             {
@@ -192,6 +198,7 @@ namespace GamePackBuilder.GUI
                 HorizontalScrollbar = true
             };
             _lstGames.DoubleClick += LstGames_DoubleClick;
+            _lstGames.SelectedIndexChanged += LstGames_SelectedIndexChanged;
 
             // Раскладка
             table.Controls.Add(lblSource, 0, 0);
@@ -375,6 +382,53 @@ namespace GamePackBuilder.GUI
             form.ShowDialog(this);
         }
 
+        private void BtnScrapeSystem_Click(object? sender, EventArgs e)
+        {
+            int idx = _lstSystems.SelectedIndex;
+            if (idx < 0 || idx >= _lastScan.Count)
+            {
+                SetStatus("Сначала выбери систему в верхнем списке.", Color.OrangeRed);
+                return;
+            }
+
+            // Проверяем настройки ScreenScraper
+            var s = AppSettings.Load();
+            if (string.IsNullOrWhiteSpace(s.ScreenScraperUser) ||
+                string.IsNullOrWhiteSpace(s.ScreenScraperPassword))
+            {
+                MessageBox.Show(this,
+                    "Сначала заполни логин и пароль ScreenScraper (кнопка «ScreenScraper»).",
+                    "Нет данных", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var result = _lastScan[idx];
+            if (result.System.ScreenScraperSystemId <= 0)
+            {
+                MessageBox.Show(this,
+                    $"Для системы «{result.System.DisplayName}» не задан ScreenScraper ID.\r\n\r\n" +
+                    "Открой «Редактор систем» и укажи числовой ID.",
+                    "Нет ID", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Спросим, что качать.
+            using var optionsForm = new MediaDownloadOptionsForm();
+            if (optionsForm.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            using var form = new ScrapeSystemForm(
+                result.System, result, s.ScreenScraperUser, s.ScreenScraperPassword,
+                optionsForm.Options);
+            form.ShowDialog(this);
+
+            // После окончания — обновим список игр, чтобы подтянуть свежие данные.
+            if (form.Completed)
+            {
+                SetStatus("Массовый скрапинг завершён.", Color.Green);
+            }
+        }
+
         // ============================================================
         // СКАНИРОВАНИЕ
         // ============================================================
@@ -503,6 +557,10 @@ namespace GamePackBuilder.GUI
         private void LstSystems_SelectedIndexChanged(object? sender, EventArgs e)
         {
             int idx = _lstSystems.SelectedIndex;
+
+            if (_btnScrapeSystem != null)
+                _btnScrapeSystem.Enabled = idx >= 0 && idx < _lastScan.Count;
+
             if (idx < 0 || idx >= _lastScan.Count)
             {
                 ShowSummaryInGamesList();
@@ -650,6 +708,67 @@ namespace GamePackBuilder.GUI
 
             using var info = new GameInfoForm(result.System.Id, result.SourcePath, fullPath);
             info.ShowDialog(this);
+        }
+
+        /// <summary>
+        /// Одинарный выбор игры в нижнем списке — показать/обновить окно предпросмотра.
+        /// Двойной клик — открыть карточку (обрабатывается отдельно).
+        /// </summary>
+        private void LstGames_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_scanning) return;
+
+            int idx = _lstGames.SelectedIndex;
+            if (idx < 0) return;
+            if (_lstSystems.SelectedIndex < 0 || _lstSystems.SelectedIndex >= _lastScan.Count)
+                return;
+
+            var result = _lastScan[_lstSystems.SelectedIndex];
+
+            // Определяем путь к выбранной игре — как в LstGames_DoubleClick.
+            string? fullPath = null;
+            int folderCount = result.Folders.Count;
+
+            var foldersSorted = result.Folders.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+            var filesSorted = result.Files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (idx < folderCount)
+                fullPath = foldersSorted.ElementAtOrDefault(idx);
+            else
+                fullPath = filesSorted.ElementAtOrDefault(idx - folderCount);
+
+            if (fullPath == null) return;
+
+            // Берём сохранённую инфу об игре.
+            string relPath = Path.GetRelativePath(result.SourcePath, fullPath);
+            GameInfoStore.Load();
+            var info = GameInfoStore.Get(result.System.Id, relPath);
+
+            // Собираем список медиа: сначала обложка, потом скриншоты.
+            var media = new List<string>();
+            if (!string.IsNullOrWhiteSpace(info.CoverPath))
+                media.Add(info.CoverPath);
+            if (info.Screenshots.Count > 0)
+                media.AddRange(info.Screenshots);
+
+            // Заголовок — либо из данных, либо имя файла.
+            string title = !string.IsNullOrWhiteSpace(info.Title)
+                ? info.Title
+                : Path.GetFileName(fullPath);
+
+            // Обновляем существующее окно или открываем новое.
+            if (_previewForm == null || _previewForm.IsDisposed)
+            {
+                _previewForm = new GamePreviewForm();
+                _previewForm.FormClosed += (_, _) => _previewForm = null;
+                _previewForm.SetContent(title, media);
+                _previewForm.Show(this);
+            }
+            else
+            {
+                _previewForm.SetContent(title, media);
+                _previewForm.Activate();
+            }
         }
 
         // ============================================================

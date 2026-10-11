@@ -66,5 +66,17 @@ namespace GamePackBuilder.GUI
 
             return parsed;
         }
+        /// <summary>
+        /// Скачать произвольный файл (медиа) по URL из ответа API.
+        /// Ссылки в поле "medias" уже содержат все ключи — просто делаем GET.
+        /// </summary>
+        public async Task<byte[]> DownloadFileAsync(string url)
+        {
+            var response = await Http.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"HTTP {(int)response.StatusCode} при скачивании {url}");
+
+            return await response.Content.ReadAsByteArrayAsync();
+        }
     }
 }

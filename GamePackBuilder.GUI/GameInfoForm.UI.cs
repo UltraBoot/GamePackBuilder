@@ -240,9 +240,25 @@ namespace GamePackBuilder.GUI
             bottomPanel.Controls.Add(_lblFilePath);
             bottomPanel.Controls.Add(buttonsPanel);
 
+
+            // ---- Оверлей для hover-превью скриншотов ----
+            _previewBox = new PictureBox
+            {
+                Size = new Size(360, 270),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BorderStyle = BorderStyle.FixedSingle,
+                Visible = false,
+                BackColor = Color.White
+            };
+
+            _lstScreenshots.ItemMouseHover += LstScreenshots_ItemMouseHover;
+            _lstScreenshots.MouseLeave += (s, e) => HidePreview();
+
             Controls.Add(mainPanel);
             Controls.Add(bottomPanel);
             Controls.Add(topPanel);
+            Controls.Add(_previewBox);
+            _previewBox.BringToFront();
         }
 
         private static Label MakeCaption(string text) => new Label
