@@ -169,6 +169,11 @@ namespace GamePackBuilder.GUI
             _chkManual.Checked = o.Manual;
         }
 
+        private void InitializeComponent()
+        {
+
+        }
+
         private MediaDownloadOptions ReadOptions() => new()
         {
             Boxart = _chkBoxart.Checked,

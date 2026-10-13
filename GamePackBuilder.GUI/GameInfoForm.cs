@@ -78,9 +78,8 @@ namespace GamePackBuilder.GUI
             // Ищем уже существующие медиа в папке системы — но НЕ переносим, только читаем.
             MediaScanner.EnrichGameInfo(_info, _basePath, gameName);
 
-            PushInfoToUi();
+           PushInfoToUi();
         }
-
 
         private void PushInfoToUi()
         {
@@ -188,6 +187,7 @@ namespace GamePackBuilder.GUI
             _btnScrape.Enabled = false;
             _progress.Visible = true;
             _progress.Style = ProgressBarStyle.Marquee;
+            _progress.MarqueeAnimationSpeed = 25;
             _lblFilePath.Text = "Загрузка с ScreenScraper...";
             _lblFilePath.ForeColor = Color.DodgerBlue;
             DebugLog.Write($"Scrape (карточка): {_systemId}, rom={Path.GetFileName(_filePath)}");

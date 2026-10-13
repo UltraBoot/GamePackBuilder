@@ -42,6 +42,9 @@ namespace GamePackBuilder.GUI
                 string folderName = Path.GetFileName(dir);
                 if (string.IsNullOrWhiteSpace(folderName)) continue;
 
+                // Служебные папки (например, _Other) не превращаются в системы.
+                if (folderName.StartsWith("_")) continue;
+
                 var system = GameSystems.FindBySourceFolder(folderName);
 
                 // Новая папка — попробуем создать систему.

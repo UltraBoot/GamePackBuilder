@@ -173,6 +173,12 @@ namespace GamePackBuilder.GUI
                 old.Dispose();
             }
         }
+
+        private void InitializeComponent()
+        {
+
+        }
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);

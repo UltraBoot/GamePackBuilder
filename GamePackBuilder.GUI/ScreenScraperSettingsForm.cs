@@ -161,7 +161,11 @@ namespace GamePackBuilder.GUI
             }
         }
 
-        
+        private void InitializeComponent()
+        {
+
+        }
+
         private void SaveAndClose()
         {
             _settings.ScreenScraperUser = _txtUser.Text.Trim();

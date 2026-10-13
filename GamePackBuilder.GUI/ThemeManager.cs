@@ -1,5 +1,6 @@
 ﻿using System.Drawing;
 using System.Windows.Forms;
+using System.IO;
 
 namespace GamePackBuilder.GUI
 {
@@ -47,6 +48,15 @@ namespace GamePackBuilder.GUI
             {
                 f.BackColor = t.FormBackground;
                 f.ForeColor = t.ControlText;
+
+                try
+                {
+                    string iconPath = Path.Combine(AppContext.BaseDirectory, "iconapp.ico");
+                    if (File.Exists(iconPath))
+                        f.Icon = new Icon(iconPath);
+                }
+                catch { }
+
                 return;
             }
 
@@ -97,7 +107,16 @@ namespace GamePackBuilder.GUI
 
             if (c is Button btn)
             {
+                // FlatIconButton сам управляет своим видом.
+                if (btn is FlatIconButton fic)
+                {
+                    fic.FlatAppearance.BorderColor = t.BorderColor;
+                    fic.BackColor = t.ControlBackground;
+                    fic.ForeColor = t.ControlText;
+                    return;
+                }
                 btn.FlatStyle = FlatStyle.Flat;
+                btn.TextAlign = ContentAlignment.MiddleCenter;
                 btn.FlatAppearance.BorderColor = t.BorderColor;
                 btn.FlatAppearance.BorderSize = 1;
                 btn.BackColor = t.ControlBackground;

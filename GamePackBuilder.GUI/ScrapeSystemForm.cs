@@ -84,7 +84,8 @@ namespace GamePackBuilder.GUI
                 Size = new Size(520, 22),
                 Minimum = 0,
                 Maximum = 100,
-                Value = 0
+                Value = 0,
+                MarqueeAnimationSpeed = 25
             };
 
             _lblStats = new Label
@@ -114,6 +115,11 @@ namespace GamePackBuilder.GUI
             Controls.Add(_btnCancel);
 
             Shown += async (_, _) => await RunAsync();
+        }
+
+        private void InitializeComponent()
+        {
+
         }
 
         private async Task RunAsync()

@@ -16,8 +16,8 @@ namespace GamePackBuilder.GUI
         // ============================================================
         private TextBox _txtSource = null!;
         private TextBox _txtTarget = null!;
-        private Button _btnBrowseSource = null!;
-        private Button _btnBrowseTarget = null!;
+        private FlatIconButton _btnBrowseSource = null!;
+        private FlatIconButton _btnBrowseTarget = null!;
         private Button _btnSave = null!;
         private Button _btnCheck = null!;
         private Button _btnScan = null!;
@@ -38,6 +38,8 @@ namespace GamePackBuilder.GUI
         private AppSettings _settings = new();
         private bool _scanning = false;
         private GamePreviewForm? _previewForm = null;
+        private bool _insideStrayFilesScan = false;
+        private ProgressBar _busyProgress = null!;
         private DateTime _lastScanTime = DateTime.MinValue;
 
         /// <summary>Сколько игр было в каждой системе на прошлом скане (для отчёта изменений).</summary>
@@ -55,6 +57,8 @@ namespace GamePackBuilder.GUI
             _settings = AppSettings.Load();
             ThemeManager.LoadFromSettings();
             BuildUI();
+
+            
             ThemeManager.Apply(this);
             Shown += MainForm_Shown;
             KeyPreview = true;
@@ -78,7 +82,7 @@ namespace GamePackBuilder.GUI
             };
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
 
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -92,13 +96,25 @@ namespace GamePackBuilder.GUI
             // Источник
             var lblSource = new Label { Text = "Источник игр:", TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill };
             _txtSource = new TextBox { Dock = DockStyle.Fill };
-            _btnBrowseSource = new Button { Text = "Обзор…", Dock = DockStyle.Fill };
+            _btnBrowseSource = new FlatIconButton
+            {
+                Text = "Обзор",
+                Icon = AppIcons.Get("folder"),
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 3, 0, 3)
+            };
             _btnBrowseSource.Click += BtnBrowseSource_Click;
 
             // Назначение
             var lblTarget = new Label { Text = "Куда копировать:", TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill };
             _txtTarget = new TextBox { Dock = DockStyle.Fill };
-            _btnBrowseTarget = new Button { Text = "Обзор…", Dock = DockStyle.Fill };
+            _btnBrowseTarget = new FlatIconButton
+            {
+                Text = "Обзор",
+                Icon = AppIcons.Get("folder"),
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 3, 0, 3)
+            };
             _btnBrowseTarget.Click += BtnBrowseTarget_Click;
 
             // Кнопки
@@ -277,7 +293,18 @@ namespace GamePackBuilder.GUI
                 BackColor = Color.FromArgb(240, 240, 240)
             };
 
+            // Тонкая полоска загрузки над статусной строкой.
+            _busyProgress = new ProgressBar
+            {
+                Dock = DockStyle.Bottom,
+                Height = 4,
+                Style = ProgressBarStyle.Marquee,
+                MarqueeAnimationSpeed = 3,
+                Visible = false
+            };
+
             Controls.Add(table);
+            Controls.Add(_busyProgress);
             Controls.Add(_lblStatus);
         }
 
@@ -478,6 +505,8 @@ namespace GamePackBuilder.GUI
             _btnScan.Enabled = false;
             _btnSystemsEditor.Enabled = false;
 
+            _busyProgress.Visible = true;
+
             if (!isAutomatic)
                 SetStatus("Сканирование…", Color.DodgerBlue);
 
@@ -492,6 +521,7 @@ namespace GamePackBuilder.GUI
                 _scanning = false;
                 _btnScan.Enabled = true;
                 _btnSystemsEditor.Enabled = true;
+                _busyProgress.Visible = false;
                 SetStatus("Ошибка сканирования: " + ex.Message, Color.Red);
                 return;
             }
@@ -521,6 +551,12 @@ namespace GamePackBuilder.GUI
 
             _previousCounts = newCounts;
             _lastScan = results;
+            // Импортируем gamelist.xml в нашу базу (для каждой системы).
+            await ImportGamelistsAsync(results);
+            // Ищем "заблудшие" файлы в подпапках систем —
+            // только при ручном сканировании, не при автозапуске.
+            if (!isAutomatic)
+                await DetectAndOfferStrayFilesAsync(results);
             _lastScanTime = DateTime.Now;
             _unknownFolders = unknownFolders;
             _lastChanges = changes;
@@ -531,6 +567,7 @@ namespace GamePackBuilder.GUI
             _scanning = false;
             _btnScan.Enabled = true;
             _btnSystemsEditor.Enabled = true;
+            _busyProgress.Visible = false;
 
             int newTotal = results.Sum(r => r.TotalGames);
             string unknownMsg = unknownFolders.Count > 0
@@ -560,6 +597,57 @@ namespace GamePackBuilder.GUI
                 .ToList();
 
             return (results, unknown);
+        }
+
+        /// <summary>
+        /// Импортировать gamelist.xml каждой найденной системы в базу.
+        /// Пустые поля заполняются молча, конфликты собираются и показываются пользователю.
+        /// </summary>
+        /// <summary>
+        /// Импортировать gamelist.xml каждой системы в базу.
+        /// Чтение XML — в фоне, чтобы не морозить UI.
+        /// </summary>
+        private async Task ImportGamelistsAsync(List<SystemScanResult> results)
+        {
+            List<GamelistConflict> allConflicts = await Task.Run(() =>
+            {
+                var conflicts = new List<GamelistConflict>();
+
+                foreach (var r in results)
+                {
+                    var games = new List<string>();
+                    games.AddRange(r.Files);
+                    games.AddRange(r.Folders);
+                    if (games.Count == 0) continue;
+
+                    try
+                    {
+                        var importResult = GamelistImporter.ImportForSystem(
+                            r.System, r.SourcePath, games);
+
+                        conflicts.AddRange(importResult.Conflicts);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLog.Write($"Ошибка импорта gamelist для {r.System.Id}: {ex.Message}");
+                    }
+                }
+
+                return conflicts;
+            });
+
+            // Диалог конфликтов — только на UI-потоке.
+            if (allConflicts.Count > 0)
+            {
+               
+                using var dlg = new ConflictsForm(allConflicts);
+                if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Accepted.Count > 0)
+                {
+                    var accepted = dlg.Accepted.ToList();
+                    await Task.Run(() => GamelistImporter.ApplyAccepted(accepted));
+                }
+                              
+            }
         }
 
         // ============================================================
@@ -859,5 +947,81 @@ namespace GamePackBuilder.GUI
 
         // Отслеживание изменений
         private List<string> _lastChanges = new();
+        /// <summary>
+        /// Найти "заблудшие" файлы в подпапках систем и предложить их перенести в корень.
+        /// </summary>
+        private async Task DetectAndOfferStrayFilesAsync(List<SystemScanResult> results)
+        {
+            // Защита от рекурсии: если уже идёт поиск "заблудших" файлов — не запускаем снова.
+            if (_insideStrayFilesScan) return;
+            _insideStrayFilesScan = true;
+
+            try
+            {
+                await DetectAndOfferStrayFilesInternalAsync(results);
+            }
+            finally
+            {
+                _insideStrayFilesScan = false;
+            }
+        }
+
+        private async Task DetectAndOfferStrayFilesInternalAsync(List<SystemScanResult> results)
+        {
+            var foundScans = await Task.Run(() =>
+            {
+                var list = new List<StrayScanResult>();
+                foreach (var r in results)
+                {
+                    try
+                    {
+                        var s = StrayFilesScanner.Scan(r.System, r.SourcePath);
+                        if (s.HasCandidates) list.Add(s);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLog.Write($"Ошибка поиска заблудших файлов {r.System.Id}: {ex.Message}");
+                    }
+                }
+                return list;
+            });
+
+            if (foundScans.Count == 0) return;
+
+            int totalMoved = 0;
+            int totalErrors = 0;
+
+            foreach (var scan in foundScans)
+            {
+                using var dlg = new StrayFilesForm(scan);
+                if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Accepted.Count > 0)
+                {
+                    var accepted = dlg.Accepted;
+                    var (moved, errors) = await Task.Run(() =>
+                        StrayFilesScanner.TransferFiles(scan, accepted));
+
+                    totalMoved += moved;
+                    totalErrors += errors;
+                }
+            }
+
+            if (totalMoved > 0 || totalErrors > 0)
+            {
+                DebugLog.Write($"Заблудшие файлы: перенесено={totalMoved}, ошибок={totalErrors}");
+
+                // Пересканируем источник — файлы переехали, список изменился.
+                if (totalMoved > 0)
+                {
+                    string src = _txtSource.Text.Trim();
+                    if (!string.IsNullOrWhiteSpace(src) && Directory.Exists(src))
+                    {
+                        // Небольшая пауза, потом пересканируем.
+                        await Task.Delay(100);
+                        await ScanInBackgroundAsync(src, isAutomatic: true);
+                    }
+                }
+            }
+        }
     }
+
 }

@@ -74,6 +74,10 @@ namespace GamePackBuilder.GUI
                 }
             };
 
+            var btnTestIcons = new Button { Text = "Тест иконок", Width = 120, Height = 28 };
+            btnTestIcons.Click += (_, _) => TestIcons();
+            panelTop.Controls.Add(btnTestIcons);
+
             panelTop.Controls.Add(btnRefresh);
             panelTop.Controls.Add(btnClear);
             panelTop.Controls.Add(btnTestGame);
@@ -145,6 +149,17 @@ namespace GamePackBuilder.GUI
                 DebugLog.Write("ОШИБКА: " + ex.Message);
             }
 
+            RefreshLog();
+        }
+        /// <summary>Временный тест: показать, какие embedded resources есть в exe.</summary>
+        private void TestIcons()
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            var names = asm.GetManifestResourceNames();
+            DebugLog.Write($"=== Встроенные ресурсы ({names.Length}) ===");
+            foreach (var n in names)
+                DebugLog.Write(n);
+            DebugLog.Write("=== Конец списка ===");
             RefreshLog();
         }
     }
